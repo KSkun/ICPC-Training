@@ -2,6 +2,7 @@
 // Created by KSkun on 2022/3/28.
 //
 #include <cassert>
+#include <cmath>
 
 #include <iostream>
 #include <set>
@@ -9,20 +10,14 @@
 #include <utility>
 #include <vector>
 #include <algorithm>
+#include <map>
 
 using namespace std;
 
 typedef long long LL;
+
 typedef pair<double, double> Point;
-
-struct Segment {
-    Point first, second;
-
-    bool operator<(const Segment &rhs) const {
-        return first != rhs.first ? first < rhs.first : second < rhs.second;
-    }
-};
-
+typedef pair<Point, Point> Segment;
 typedef pair<LL, LL> PointL;
 typedef pair<PointL, PointL> SegmentL;
 
@@ -80,8 +75,7 @@ SegmentL segmentToSegmentL(const Segment &seg, bool &success) {
 }
 
 int n;
-Point bboxMin, bboxMax;
-vector<Segment *> hSegs, vSegs;
+int minX, minY, maxX, maxY;
 
 struct Line {
     double a, b, c;
@@ -92,7 +86,7 @@ struct Line {
 
     Point intersect(const Line &another) const {
         auto newX = -(c * another.b - another.c * b) / (a * another.b - another.a * b);
-        auto newY = -c - a / b * newX;
+        auto newY = (-c - a * newX) / b;
         return {newX, newY};
     }
 
@@ -125,113 +119,15 @@ struct Line {
     }
 };
 
-void addRectangle(const Point &p1, const Point &p2) {
-    auto[x1, y1] = p1;
-    auto[x2, y2] = p2;
-    hSegs.push_back(new Segment{{x1, y1},
-                                {x1, y2}});
-    vSegs.push_back(new Segment{{x1, y1},
-                                {x2, y1}});
-    vSegs.push_back(new Segment{{x1, y2},
-                                {x2, y2}});
-    hSegs.push_back(new Segment{{x2, y1},
-                                {x2, y2}});
-}
-
-void eraseDuplicatedSegments(vector<Segment *> &segs) {
-    sort(segs.begin(), segs.end());
-    for (int i = 0; i < segs.size(); i++) {
-        if (i + 1 < segs.size() && segs[i + 1] == segs[i]) {
-            segs.erase(segs.begin() + i + 1);
-            segs.erase(segs.begin() + i);
-            i--;
-            continue;
-        }
-    }
-}
-
-vector<Segment> combineHorizonalSegments(vector<Segment *> &segs) {
-    auto cmpFunc = [](const Segment *&a, const Segment *&b) {
-        if (a->first.first != b->first.first) {
-            return a->first.first < b->first.first;
-        }
-        auto al = a->first.second, ar = a->second.second,
-                bl = b->first.second, br = b->second.second;
-        return ar != br ? ar < br : al < bl;
-    };
-    sort(segs.begin(), segs.end(), cmpFunc);
-    vector<Segment> newSegs;
-    int lIdx = 0;
-    while (lIdx < segs.size()) {
-        double lineXPos = segs[lIdx]->first.first; // 该行 x 坐标
-        int rIdx = lIdx;
-        while (rIdx < segs.size() && segs[rIdx]->first.first == segs[lIdx]->first.first) rIdx++;
-        // [i, j) 区间内横坐标相同
-        double lPos = segs[lIdx]->first.second, rPos = segs[lIdx]->second.second;
-        for (int i = lIdx + 1; i < rIdx; i++) {
-            double nowLPos = segs[i]->first.second, nowRPos = segs[i]->second.second;
-            if (nowLPos > rPos) {
-                newSegs.push_back({{lineXPos, lPos},
-                                   {lineXPos, rPos}});
-                lPos = nowLPos;
-                rPos = nowRPos;
-                continue;
-            }
-            rPos = max(nowRPos, rPos);
-        }
-        newSegs.push_back({{lineXPos, lPos},
-                           {lineXPos, rPos}});
-        lIdx = rIdx;
-    }
-    return newSegs;
-}
-
-vector<Segment> combineVerticalSegments(vector<Segment *> &segs) {
-    auto cmpFunc = [](const Segment *&a, const Segment *&b) {
-        if (a->first.second != b->first.second) {
-            return a->first.second < b->first.second;
-        }
-        auto al = a->first.first, ar = a->second.first,
-                bl = b->first.first, br = b->second.first;
-        return ar != br ? ar < br : al < bl;
-    };
-    sort(segs.begin(), segs.end(), cmpFunc);
-    vector<Segment> newSegs;
-    int lIdx = 0;
-    while (lIdx < segs.size()) {
-        double lineYPos = segs[lIdx]->first.second; // 该行 y 坐标
-        int rIdx = lIdx;
-        while (rIdx < segs.size() && segs[rIdx]->first.second == segs[lIdx]->first.second) rIdx++;
-        // [i, j) 区间内横坐标相同
-        double lPos = segs[lIdx]->first.first, rPos = segs[lIdx]->second.first;
-        for (int i = lIdx + 1; i < rIdx; i++) {
-            double nowLPos = segs[i]->first.first, nowRPos = segs[i]->second.first;
-            if (nowLPos > rPos) {
-                newSegs.push_back({{lPos, lineYPos},
-                                   {rPos, lineYPos}});
-                lPos = nowLPos;
-                rPos = nowRPos;
-                continue;
-            }
-            rPos = max(nowRPos, rPos);
-        }
-        newSegs.push_back({{lPos, lineYPos},
-                           {rPos, lineYPos}});
-        lIdx = rIdx;
-    }
-    return newSegs;
-}
-
-bool checkValidAxis(const Line &axis, const set<SegmentL> &segs) {
-    for (auto &seg: segs) {
-        Segment symSeg = {axis.symmetricPoint(seg.first), axis.symmetricPoint(seg.second)};
-        if (symSeg.first > symSeg.second) swap(symSeg.first, symSeg.second);
+bool checkValidAxis(const Line &axis, const set<PointL> &points) {
+    for (auto &p: points) {
+        auto symP = axis.symmetricPoint(p);
         // 是否为整点
         bool success = true;
-        auto symSegL = segmentToSegmentL(symSeg, success);
+        auto symPL = pointToPointL(symP, success);
         if (!success) return false;
-        // 对称边是否存在
-        if (segs.count(symSegL) == 0) return false;
+        // 对称点是否存在
+        if (points.count(symPL) == 0) return false;
     }
     return true;
 }
@@ -242,38 +138,37 @@ int main() {
     cin >> T;
     while (T--) {
         cin >> n;
-        hSegs.clear();
-        vSegs.clear();
+        map<Point, int> overlapCount;
         for (int i = 1; i <= n; i++) {
             int x1, y1, x2, y2;
             cin >> x1 >> y1 >> x2 >> y2;
-            Point p1 = {x1, y1}, p2 = {x2, y2};
             if (i == 1) {
-                bboxMin = p1;
-                bboxMax = p2;
+                minX = x1;
+                minY = y1;
+                maxX = x2;
+                maxY = y2;
             } else {
-                bboxMin = min(bboxMin, p1);
-                bboxMax = max(bboxMax, p2);
+                minX = min(minX, x1);
+                minY = min(minY, y1);
+                maxX = max(maxX, x2);
+                maxY = max(maxY, y2);
             }
-            addRectangle(p1, p2);
+            overlapCount[{x1, y1}]++;
+            overlapCount[{x1, y2}]++;
+            overlapCount[{x2, y1}]++;
+            overlapCount[{x2, y2}]++;
         }
-        // 删重复边
-        eraseDuplicatedSegments(hSegs);
-        eraseDuplicatedSegments(vSegs);
-        // 重叠边合并
-        auto newHSegs = combineHorizonalSegments(hSegs);
-        auto newVSegs = combineVerticalSegments(vSegs);
-        // 合并边表
-        set<SegmentL> segs;
+        // 只比较被一个矩形使用的顶点
+        set<PointL> eigenPoints;
         bool tmp;
-        for (auto &seg: hSegs) {
-            segs.insert(segmentToSegmentL(*seg, tmp));
-        }
-        for (auto &seg: vSegs) {
-            segs.insert(segmentToSegmentL(*seg, tmp));
+        for (auto[p, c] : overlapCount) {
+            if (c == 1) {
+                auto pL = pointToPointL(p, tmp);
+                eigenPoints.insert(pL);
+            }
         }
 
-        auto bboxMid = midPoint(bboxMin, bboxMax);
+        auto bboxMid = midPoint({minX, minY}, {maxX, maxY});
         array<Line, 4> axes = {{
                                        {1, 0, -bboxMid.first},
                                        {0, 1, -bboxMid.second},
@@ -282,13 +177,13 @@ int main() {
                                }};
         vector<LineParams> ans;
         for (auto &a: axes) {
-            if (checkValidAxis(a, segs)) ans.push_back(a.getIntegerParams());
+            if (checkValidAxis(a, eigenPoints)) ans.push_back(a.getIntegerParams());
         }
-        sort(ans.begin(), ans.end(), greater());
+        sort(ans.begin(), ans.end(), greater<LineParams>());
         cout << ans.size() << endl;
         for (auto &p: ans) {
             auto[a, b, c] = p;
-            cout << a << " " << b << " " << c << " ";
+            cout << a << " " << b << " " << -c << " ";
         }
         cout << endl;
     }
