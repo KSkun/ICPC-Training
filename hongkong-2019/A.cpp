@@ -132,6 +132,8 @@ bool checkValidAxis(const Line &axis, const set<PointL> &points) {
     return true;
 }
 
+// 乱搞过的，存在漏洞
+// 一个更好的想法：在检查所有点对称点的时候检查其被覆盖的次数相等，不过不保证是对的
 int main() {
     ios::sync_with_stdio(false);
     int T;
