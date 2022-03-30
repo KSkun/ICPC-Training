@@ -4,6 +4,7 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include <tuple>
 
 using namespace std;
 
@@ -49,14 +50,24 @@ LL ans;
 
 int cent, allSize, subtSize[MAXN], maxChSize[MAXN];
 bool isCent[MAXN];
+int nowCent;
+
+void dfsGetSubtSize(int u, int dfsPar) {
+    subtSize[u] = 1;
+    if (isCent[u]) return;
+    for (auto v : G[u]) {
+        if (v == nowCent || v == dfsPar) continue;
+        dfsGetSubtSize(v, u);
+        subtSize[u] += subtSize[v];
+    }
+}
 
 void dfsFindCent(int u, int dfsPar) {
-    subtSize[u] = 1;
     maxChSize[u] = 0;
+    if (isCent[u]) return;
     for (auto v : G[u]) {
-        if (isCent[v] || v == dfsPar) continue;
+        if (v == nowCent || v == dfsPar) continue;
         dfsFindCent(v, u);
-        subtSize[u] += subtSize[v];
         maxChSize[u] = max(maxChSize[u], subtSize[v]);
     }
     maxChSize[u] = max(maxChSize[u], allSize - subtSize[u]);
@@ -65,8 +76,8 @@ void dfsFindCent(int u, int dfsPar) {
 
 int findCent(int subtRoot) {
     cent = 0;
-    allSize = subtSize[subtRoot];
-    if (subtRoot == 1) allSize = n; // 第一次求重心
+    dfsGetSubtSize(subtRoot, 0);
+    allSize = subtSize[subtRoot] + 1;
     maxChSize[0] = 1e9;
     dfsFindCent(subtRoot, 0);
     return cent;
@@ -78,14 +89,21 @@ void dfsChainSum(int u, LL sumW, int maxW, int subtRoot, int dfsPar, vector<Chai
     sumW += a[u];
     maxW = max(maxW, a[u]);
     infos.emplace_back(maxW, sumW, subtRoot);
+    if (isCent[u]) return;
     for (auto v : G[u]) {
-        if (isCent[v] || v == dfsPar) continue;
+        if (v == nowCent || v == dfsPar) continue;
         dfsChainSum(v, sumW, maxW, subtRoot, u, infos);
     }
 }
 
 int queryNormalized(const vector<LL> &tmpValues, LL value) {
+    if (value < tmpValues[0]) return 0;
     return lower_bound(tmpValues.begin(), tmpValues.end(), value) - tmpValues.begin() + 1;
+}
+
+int queryLessEqNormalized(const vector<LL> &tmpValues, LL value) {
+    if (value < tmpValues[0]) return 0;
+    return upper_bound(tmpValues.begin(), tmpValues.end(), value) - tmpValues.begin();
 }
 
 void prepareNormalization(vector<ChainInfo> &values, vector<LL> &tmpValues) {
@@ -114,11 +132,13 @@ LL countInInfos(vector<ChainInfo> &infos, vector<LL> &tmpSumValues, int u) {
     sort(infos.begin(), infos.end());
     for (auto[maxW, sumW, subtRoot] : infos) {
         LL lessThan = 2 * maxW - sumW + a[u];
-        int queryResult = tr.querySum(queryNormalized(tmpSumValues, lessThan));
+        int lessThanNormalized = queryLessEqNormalized(tmpSumValues, lessThan);
+        int queryResult = tr.querySum(lessThanNormalized);
         int largerCount = valuesInTr - queryResult;
         res += largerCount;
         valuesInTr++;
-        tr.add(queryNormalized(tmpSumValues, sumW), 1);
+        int sumWNormalized = queryNormalized(tmpSumValues, sumW);
+        tr.add(sumWNormalized, 1);
     }
     return res;
 }
@@ -128,7 +148,6 @@ LL countCentPaths(int u) {
 
     vector<ChainInfo> infos;
     for (auto v : G[u]) {
-        if (isCent[v]) continue;
         dfsChainSum(v, a[u], a[u], v, 0, infos);
     }
     vector<LL> tmpSumValues;
@@ -156,10 +175,13 @@ LL countCentPaths(int u) {
 void dfsCentSolve(int u) {
     // solve problem
     isCent[u] = true;
-    ans += countCentPaths(u);
+    nowCent = u;
+    LL countPassU = countCentPaths(u);
+    ans += countPassU;
     for (auto v : G[u]) {
         if (isCent[v]) continue;
-        dfsCentSolve(findCent(v));
+        int subtCent = findCent(v);
+        dfsCentSolve(subtCent);
     }
 }
 
@@ -182,7 +204,8 @@ int main() {
 
         ans = 0;
         fill(isCent, isCent + MAXN, false);
-        dfsCentSolve(findCent(1));
+        int allCent = findCent(1);
+        dfsCentSolve(allCent);
         cout << ans << endl;
     }
     return 0;
